@@ -147,7 +147,7 @@ class modActiveDirectory {
 
     public function getGroupsFromInfo($data) {
         if (empty($data['memberof'])) return array();
-        
+
         $groupStrings = $data['memberof'];
         $adGroups = array();
         foreach ($groupStrings as $k => $groupString) {

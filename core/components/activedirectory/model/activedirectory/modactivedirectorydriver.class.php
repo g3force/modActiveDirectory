@@ -51,6 +51,14 @@ class modActiveDirectoryDriver {
      */
     const OPT_BASE_DN = 'activedirectory.base_dn';
     /**
+     * @var string The base dn for your domain users
+     */
+    // const OPT_USER_BASE_DN = 'activedirectory.user_base_dn';
+    /**
+     * @var string The base dn for your domain groups
+     */
+    // const OPT_GROUP_BASE_DN = 'activedirectory.group_base_dn';
+    /**
      * @var string Comma-separated list of domain controllers. Specifiy multiple
      * controllers if you would like the class to balance the LDAP queries
      * amongst multiple servers
@@ -218,9 +226,20 @@ class modActiveDirectoryDriver {
         if (empty($username) || empty($password)) { return false; }
 
         // Bind as the user
-        $accountSuffix = $this->getOption(modActiveDirectoryDriver::OPT_ACCOUNT_SUFFIX,'@forest.local');
-        $this->_bind = @ldap_bind($this->_conn,$username.$accountSuffix,$password);
-        if (!$this->_bind) { return false; }
+        $accountSuffix = $this->getOption(modActiveDirectoryDriver::OPT_ACCOUNT_SUFFIX,'');
+        if($accountSuffix && $accountSuffix != "")
+        {
+        	$this->_bind = @ldap_bind($this->_conn,$username.$accountSuffix,$password);
+        } else {
+        	$userBaseDn = "ou=users,".$this->getOption(modActiveDirectoryDriver::OPT_BASE_DN,'');
+        	$this->_bind = @ldap_bind($this->_conn,"cn=".$username.",".$userBaseDn,$password);
+        	// always prevent
+        	$preventRebind = true;
+        }
+        if (!$this->_bind) {
+        	$this->modx->log(modX::LOG_LEVEL_ERROR,'Could not bind. accountSuffix='.$accountSuffix.' userBaseDn='.$userBaseDn);
+        	return false; 
+        }
 
         /* Once we've checked their details, kick back into admin mode if we have it */
         $adminPassword = $this->getOption(modActiveDirectoryDriver::OPT_ADMIN_PASSWORD);
@@ -246,6 +265,11 @@ class modActiveDirectoryDriver {
     * @return string
     */
     public function findBaseDn() {
+    	$baseDn = $this->getOption(modActiveDirectoryDriver::OPT_BASE_DN);
+    	if(!empty($baseDn))
+    	{
+    		return $baseDn;
+    	}
         $namingContext = $this->getRootDse(array('defaultnamingcontext'));
         return $namingContext[0]['defaultnamingcontext'][0];
     }
@@ -530,22 +554,33 @@ class modActiveDirectoryDriver {
             $username = $this->strguid2hex($username);
             $filter = "objectguid=".$username;
         } else {
-            $filter = "samaccountname=".$username;
+//             $filter = "samaccountname=".$username;
+            $filter = "cn=".$username;
         }
         $baseDn = $this->findBaseDn();
         $sr = ldap_search($this->_conn,$baseDn,$filter,$fields);
         $entries = ldap_get_entries($this->_conn, $sr);
 
-        if ($entries[0]['count'] >= 1) {
-            // AD does not return the primary group in the ldap query, we may need to fudge it
-            if ($this->getOption(modActiveDirectoryDriver::OPT_REAL_PRIMARYGROUP) && isset($entries[0]["primarygroupid"][0]) && isset($entries[0]["objectsid"][0])) {
-                $entries[0]["memberof"][] = $this->getPrimaryGroup($entries[0]["primarygroupid"][0], $entries[0]["objectsid"][0]);
-            } else {
-                $entries[0]["memberof"][] = "CN=Domain Users,CN=Users,".$baseDn;
-            }
+//         if ($entries[0]['count'] >= 1) {
+//             // AD does not return the primary group in the ldap query, we may need to fudge it
+//             if ($this->getOption(modActiveDirectoryDriver::OPT_REAL_PRIMARYGROUP) && isset($entries[0]["primarygroupid"][0]) && isset($entries[0]["objectsid"][0])) {
+//                 $entries[0]["memberof"][] = $this->getPrimaryGroup($entries[0]["primarygroupid"][0], $entries[0]["objectsid"][0]);
+//             } else {
+//                 $entries[0]["memberof"][] = "CN=Domain Users,CN=Users,".$baseDn;
+//             }
+//         	$entries[0]["memberof"]["count"]++;
+//         }
+        $groupBaseDn = "ou=groups,".$this->getOption(modActiveDirectoryDriver::OPT_BASE_DN, $this->getOption(modActiveDirectoryDriver::OPT_BASE_DN));
+        $filter="(memberUid=".$username.")";
+        $sr = ldap_search($this->_conn,$groupBaseDn,$filter);
+        $groupEntries = ldap_get_entries($this->_conn, $sr);
+
+        foreach ( $groupEntries as $entry )
+        {
+        	$entries[0]["memberof"][] = $entry['dn'];
+        	$entries[0]["memberof"]["count"]++;
         }
 
-        $entries[0]["memberof"]["count"]++;
         return $entries;
     }
 

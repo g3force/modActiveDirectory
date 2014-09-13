@@ -1,3 +1,8 @@
+## fork of modActiveDirectory
+
+Original: https://github.com/splittingred/modActiveDirectory
+Added support for OpenLDAP. account_suffix must be empty and base_dn filled. Users must be in ou=users and groups in ou=groups.
+
 ## modActiveDirectory
 
 This is an ActiveDirectory integration for MODx Revolution.
